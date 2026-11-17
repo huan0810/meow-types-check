@@ -247,7 +247,7 @@
       <div class="ph ph3"><img src="assets/cats/black.jpg" alt=""></div>
     </div>
     <div class="cover-foot">
-      <div class="proof"><span style="width:6px;height:6px;border-radius:50%;background:#58C9A9;display:block"></span><span><b id="peopleCount">1,284,392</b> 人已测过</span></div>
+      <div class="proof"><span style="width:6px;height:6px;border-radius:50%;background:#58C9A9;display:block"></span><span><b id="peopleCount">—</b> 人已测过</span></div>
       <button class="btn" id="startBtn">开始测试</button>
       <p class="micro">结果仅供娱乐 · 不收集任何个人信息</p>
     </div>
@@ -495,16 +495,56 @@ function toast(msg){
 /* =========================================================
    封面
    ========================================================= */
-function baseCount(){
-  let n = 1284392;
+/* =========================================================
+   统计（第三方计数服务，免注册、无需后端）
+   ========================================================= */
+const STAT = { base:'https://abacus.jasoncameron.dev', ns:'meow-type-huan0810' };
+const IS_DEMO = /[?&]demo=/.test(location.search);
+function statURL(kind, key){ return STAT.base + '/' + kind + '/' + STAT.ns + '/' + key; }
+function statFetch(url){
+  const ctl = new AbortController();
+  const timer = setTimeout(()=>ctl.abort(), 5000);
+  return fetch(url, {cache:'no-store', signal:ctl.signal})
+    .finally(()=>clearTimeout(timer));
+}
+function statGet(key){
+  return statFetch(statURL('get', key))
+    .then(r=> r.ok ? r.json() : Promise.reject(r.status))
+    .then(j=> Number(j.value) || 0);
+}
+function statHit(key){
+  return statFetch(statURL('hit', key))
+    .then(r=> r.ok ? r.json() : Promise.reject(r.status))
+    .then(j=> Number(j.value) || 0)
+    .catch(()=> 0);
+}
+function showCount(n){
+  const el = $('#peopleCount');
+  if(el) el.textContent = fmt(n);
+}
+function refreshCount(){
+  // 先用上次缓存值秒开，再等接口刷新
   try{
-    const saved = localStorage.getItem('meow_done');
-    if(saved) n = n + parseInt(saved,10);
+    const cached = parseInt(localStorage.getItem('meow_count')||'0', 10);
+    if(cached > 0) showCount(cached);
   }catch(e){}
-  return n;
+  statGet('total').then(n=>{
+    showCount(n);
+    try{ localStorage.setItem('meow_count', n); }catch(e){}
+  }).catch(()=>{
+    try{
+      const cached = parseInt(localStorage.getItem('meow_count')||'0', 10);
+      if(!(cached > 0)) showCount(0);
+    }catch(e){ showCount(0); }
+  });
+}
+function recordCompletion(typeKey){
+  if(IS_DEMO) return;          // 预览/调试模式不计数
+  statHit('total');
+  if(typeKey) statHit('type-' + typeKey);
 }
 function fmt(n){ return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
-$('#peopleCount').textContent = fmt(baseCount());
+refreshCount();
 
 $('#startBtn').addEventListener('click', ()=>{
   app.idx = 0; app.answers = []; app.result = null; app.busy = false;
@@ -604,14 +644,13 @@ function finish(){
     renderResult(r);
     go('result');
     try{
-      const saved = parseInt(localStorage.getItem('meow_done')||'0',10) + 1;
-      localStorage.setItem('meow_done', saved);
-      $('#peopleCount').textContent = fmt(baseCount());
+      recordCompletion(r.type && r.type.key);
+      refreshCount();
     }catch(e){}
   });
 }
 
-const ANALYZE_STEPS = ['正在统计你的选择…','比对 128 万份答卷…','生成你的人格卡…'];
+const ANALYZE_STEPS = ['正在统计你的选择…','比对六种猫系特征…','生成你的人格卡…'];
 function showAnalyzing(done){
   const layer = $('#analyzing');
   const txt = $('#atxt');

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>猫系人格测试 · 数据看板</title>
+<style>
+  :root{
+    --cream:#FDF6EF; --card:#FFFFFF; --ink:#3A2E28; --muted:#8C7B6B;
+    --coral:#E85340; --line:#F0E3D6;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{
+    margin:0;padding:28px 18px 48px;background:var(--cream);color:var(--ink);
+    font-family:"PingFang SC","Microsoft YaHei",-apple-system,sans-serif;
+    max-width:560px;margin-inline:auto;
+  }
+  h1{font-size:21px;margin:0 0 4px;letter-spacing:.5px}
+  .sub{font-size:12.5px;color:var(--muted);margin-bottom:22px}
+  .panel{
+    background:var(--card);border-radius:20px;padding:22px 20px;
+    box-shadow:0 14px 32px -22px rgba(120,80,55,.5);margin-bottom:16px;
+  }
+  .total-label{font-size:12.5px;color:var(--muted);letter-spacing:1px}
+  .total{font-size:46px;font-weight:800;line-height:1.05;margin:6px 0 2px;color:var(--coral)}
+  .total small{font-size:14px;font-weight:500;color:var(--muted);margin-left:6px}
+  .row{margin-top:18px}
+  .row:first-of-type{margin-top:8px}
+  .row-head{display:flex;align-items:baseline;justify-content:space-between;font-size:14px;margin-bottom:7px}
+  .row-head b{font-weight:600}
+  .row-head span{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .track{height:10px;border-radius:6px;background:#F4EADD;overflow:hidden}
+  .fill{height:100%;border-radius:6px;width:0;transition:width .7s cubic-bezier(.22,.8,.24,1)}
+  .foot{font-size:11.5px;color:var(--muted);line-height:1.7}
+  .btn{
+    display:inline-block;margin-top:2px;padding:9px 18px;border-radius:999px;border:none;
+    background:var(--ink);color:#fff;font-size:13px;font-family:inherit;cursor:pointer;
+  }
+  .err{color:#C0392B;font-size:13px;line-height:1.7}
+  .locked{text-align:center;padding:60px 20px;color:var(--muted);font-size:14px;line-height:2}
+</style>
+</head>
+<body>
+
+<div id="locked" class="locked" hidden>
+  🔒<br>需要访问口令<br><span style="font-size:12px">请在链接后加上 ?k=你的口令</span>
+</div>
+
+<div id="app" hidden>
+  <h1>猫系人格测试 · 数据看板</h1>
+  <div class="sub" id="ts">加载中…</div>
+
+  <div class="panel">
+    <div class="total-label">累计完成测试</div>
+    <div class="total"><span id="total">—</span><small>人次</small></div>
+  </div>
+
+  <div class="panel">
+    <div class="total-label" style="margin-bottom:14px">人格类型分布</div>
+    <div id="rows"></div>
+  </div>
+
+  <div class="panel">
+    <button class="btn" id="reload">刷新数据</button>
+    <div class="foot" style="margin-top:14px">
+      数据来源：第三方公开计数服务（abacus），页面加载时实时读取。<br>
+      说明：按「完成测试」计一次；同一人重复测会重复计数；换浏览器/设备不会去重。
+    </div>
+  </div>
+</div>
+
+<script>
+const KEY = 'meow2026';               // 访问口令，可自行修改
+const STAT = { base:'https://abacus.jasoncameron.dev', ns:'meow-type-huan0810' };
+const TYPES = [
+  { k:'A', name:'布偶猫型',       color:'#D4736B' },
+  { k:'B', name:'金渐层型',       color:'#B08A1E' },
+  { k:'C', name:'阿比西尼亚型',   color:'#A6552F' },
+  { k:'D', name:'黑猫型',         color:'#6E6494' },
+  { k:'E', name:'橘猫型',         color:'#C4762A' },
+  { k:'F', name:'暹罗猫型',       color:'#5F7FA6' }
+];
+const fmt = n => n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+function get(key){
+  return fetch(`${STAT.base}/get/${STAT.ns}/${key}`, { cache:'no-store' })
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(j => Number(j.value) || 0)
+    .catch(() => 0);
+}
+
+async function load(){
+  const [total, ...counts] = await Promise.all([
+    get('total'), ...TYPES.map(t => get('type-' + t.k))
+  ]);
+
+  document.getElementById('total').textContent = fmt(total);
+  document.getElementById('ts').textContent = '更新于 ' + new Date().toLocaleString('zh-CN', { hour12:false });
+
+  const sum = counts.reduce((a, b) => a + b, 0);
+  const max = Math.max(1, ...counts);
+
+  document.getElementById('rows').innerHTML = TYPES.map((t, i) => {
+    const c = counts[i];
+    const pct = sum > 0 ? (c / sum * 100) : 0;
+    const barW = (c / max) * 100;
+    return `<div class="row">
+      <div class="row-head">
+        <b>${t.name}</b>
+        <span>${fmt(c)} 人 · ${pct.toFixed(1)}%</span>
+      </div>
+      <div class="track"><div class="fill" data-w="${barW}" style="background:${t.color}"></div></div>
+    </div>`;
+  }).join('');
+
+  requestAnimationFrame(() => {
+    document.querySelectorAll('.fill').forEach(el => { el.style.width = el.dataset.w + '%'; });
+  });
+}
+
+if(new URLSearchParams(location.search).get('k') === KEY){
+  document.getElementById('app').hidden = false;
+  load();
+  document.getElementById('reload').addEventListener('click', load);
+}else{
+  document.getElementById('locked').hidden = false;
+}
+</script>
+</body>
+</html>
